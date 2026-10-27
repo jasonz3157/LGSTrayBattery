@@ -132,7 +132,10 @@ namespace LGSTrayUI
 
             foreach (var image in layers)
             {
-                g.DrawImage(image, destRect, 0, 0, image.Width, image.Height, GraphicsUnit.Pixel, wrapMode);
+                // Trim unused vertical padding so the glyph fills the tray icon height.
+                var sourceRect = new RectangleF(0, image.Height * 0.08f, image.Width, image.Height * 0.84f);
+                g.DrawImage(image, destRect, sourceRect.X, sourceRect.Y, sourceRect.Width, sourceRect.Height,
+                    GraphicsUnit.Pixel, wrapMode);
                 image.Dispose();
             }
 
