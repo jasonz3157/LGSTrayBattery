@@ -64,15 +64,43 @@ namespace LGSTrayUI
             //};
         };
 
-        private static Bitmap GetBatteryValue(LogiDevice device) => device.BatteryPercentage switch
+        private static Bitmap GetBatteryValue(LogiDevice device)
         {
-            { } when device.PowerSupplyStatus == PowerSupplyStatus.POWER_SUPPLY_STATUS_CHARGING => Charging,
-            < 0 => Missing,
-            < 10 => Resources.Indicator_10,
-            < 50 => Resources.Indicator_30,
-            < 85 => Resources.Indicator_50,
-            _ => Resources.Indicator_100
-        };
+            if (device.PowerSupplyStatus == PowerSupplyStatus.POWER_SUPPLY_STATUS_CHARGING)
+                return Charging;
+
+            if (device.BatteryPercentage < 0)
+                return Missing;
+
+            using var indicator = device.BatteryPercentage switch
+            {
+                < 10 => Resources.Indicator_10,
+                < 50 => Resources.Indicator_30,
+                < 85 => Resources.Indicator_50,
+                _ => Resources.Indicator_100
+            };
+
+            var color = device.BatteryPercentage < 30
+                ? Color.FromArgb(0xE4, 0xA7, 0x38)
+                : CheckTheme.LightTheme ? Color.Black : Color.White;
+
+            // Replace the indicator's RGB colors while preserving its alpha mask.
+            using var attributes = new ImageAttributes();
+            attributes.SetColorMatrix(new ColorMatrix(new[]
+            {
+                new float[] { 0, 0, 0, 0, 0 },
+                new float[] { 0, 0, 0, 0, 0 },
+                new float[] { 0, 0, 0, 0, 0 },
+                new float[] { 0, 0, 0, 1, 0 },
+                new float[] { color.R / 255f, color.G / 255f, color.B / 255f, 0, 1 }
+            }));
+
+            var tinted = new Bitmap(indicator.Width, indicator.Height);
+            using var graphics = Graphics.FromImage(tinted);
+            graphics.DrawImage(indicator, new Rectangle(0, 0, tinted.Width, tinted.Height),
+                0, 0, indicator.Width, indicator.Height, GraphicsUnit.Pixel, attributes);
+            return tinted;
+        }
 
         public static void DrawUnknown(TaskbarIcon taskbarIcon)
         {
