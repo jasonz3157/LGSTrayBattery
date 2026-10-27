@@ -124,16 +124,18 @@ namespace LGSTrayUI
             using var wrapMode = new ImageAttributes();
             wrapMode.SetWrapMode(WrapMode.TileFlipXY);
 
-            Bitmap[] layers = [
-                GetBatteryValue(device),
-                Battery,
-                GetDeviceIcon(device),
+            (Bitmap Image, bool TrimVerticalPadding)[] layers = [
+                (GetBatteryValue(device), true),
+                (Battery, true),
+                (GetDeviceIcon(device), false),
             ];
 
-            foreach (var image in layers)
+            foreach (var (image, trimVerticalPadding) in layers)
             {
-                // Trim unused vertical padding so the glyph fills the tray icon height.
-                var sourceRect = new RectangleF(0, image.Height * 0.08f, image.Width, image.Height * 0.84f);
+                // Enlarge the battery layers while keeping the device glyph at its original height.
+                var sourceRect = trimVerticalPadding
+                    ? new RectangleF(0, image.Height * 0.08f, image.Width, image.Height * 0.84f)
+                    : new RectangleF(0, 0, image.Width, image.Height);
                 g.DrawImage(image, destRect, sourceRect.X, sourceRect.Y, sourceRect.Width, sourceRect.Height,
                     GraphicsUnit.Pixel, wrapMode);
                 image.Dispose();
