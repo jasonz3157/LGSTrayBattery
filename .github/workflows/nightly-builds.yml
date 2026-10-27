@@ -25,16 +25,15 @@ jobs:
 
     - name: python .\publish.py
       run: |
-        $commit_ts=git show --no-patch --format=%at
-        $commit_ds=(([System.DateTimeOffset]::FromUnixTimeSeconds($commit_ts)).DateTime).ToString("yyyyMMdd")
-        python .\publish.py --version-suffix="-nightly+$commit_ds"
+        $nightlyVersion = [System.DateTimeOffset]::UtcNow.ToOffset([System.TimeSpan]::FromHours(8)).ToString("yyyyMMddHHmmss")
+        "NIGHTLY_VERSION=$nightlyVersion" >> $env:GITHUB_ENV
+        python .\publish.py --version-suffix="-nightly+$nightlyVersion"
 
     - name: upload nightly build
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        $commit_ts=git show --no-patch --format=%at
-        $commit_ds=(([System.DateTimeOffset]::FromUnixTimeSeconds($commit_ts)).DateTime).ToString("yyyyMMdd")
         gh release create -R "jasonz3157/LGSTrayBattery" `
-          $commit_ds `
+          $env:NIGHTLY_VERSION `
+          --target "$env:GITHUB_SHA" `
           (get-item ./bin/Release/publish/*.zip)

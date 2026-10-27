@@ -66,11 +66,10 @@ namespace LGSTrayUI
 
         private static Bitmap GetBatteryValue(LogiDevice device)
         {
-            if (device.PowerSupplyStatus == PowerSupplyStatus.POWER_SUPPLY_STATUS_CHARGING)
-                return Charging;
-
             if (device.BatteryPercentage < 0)
-                return Missing;
+                return device.PowerSupplyStatus == PowerSupplyStatus.POWER_SUPPLY_STATUS_CHARGING
+                    ? GetChargingOverlay()
+                    : Missing;
 
             using var indicator = device.BatteryPercentage switch
             {
@@ -84,7 +83,12 @@ namespace LGSTrayUI
                 ? Color.FromArgb(0xE4, 0xA7, 0x38)
                 : CheckTheme.LightTheme ? Color.Black : Color.White;
 
-            // Replace the indicator's RGB colors while preserving its alpha mask.
+            return TintImage(indicator, color);
+        }
+
+        private static Bitmap TintImage(Bitmap image, Color color)
+        {
+            // Replace RGB colors while preserving the source alpha mask.
             using var attributes = new ImageAttributes();
             attributes.SetColorMatrix(new ColorMatrix(new[]
             {
@@ -95,11 +99,34 @@ namespace LGSTrayUI
                 new float[] { color.R / 255f, color.G / 255f, color.B / 255f, 0, 1 }
             }));
 
-            var tinted = new Bitmap(indicator.Width, indicator.Height);
+            var tinted = new Bitmap(image.Width, image.Height);
             using var graphics = Graphics.FromImage(tinted);
-            graphics.DrawImage(indicator, new Rectangle(0, 0, tinted.Width, tinted.Height),
-                0, 0, indicator.Width, indicator.Height, GraphicsUnit.Pixel, attributes);
+            graphics.DrawImage(image, new Rectangle(0, 0, tinted.Width, tinted.Height),
+                0, 0, image.Width, image.Height, GraphicsUnit.Pixel, attributes);
             return tinted;
+        }
+
+        private static Bitmap GetChargingOverlay()
+        {
+            using var symbol = Charging;
+            // The contrasting center stands out on a filled bar; the outline remains visible on an empty bar.
+            using var foreground = TintImage(symbol, CheckTheme.LightTheme ? Color.White : Color.Black);
+            using var outline = TintImage(symbol, CheckTheme.LightTheme ? Color.Black : Color.White);
+            var overlay = new Bitmap(symbol.Width, symbol.Height);
+            using var graphics = Graphics.FromImage(overlay);
+            int outlineWidth = Math.Max(1, (int)Math.Ceiling(symbol.Width / (float)ImageSize));
+
+            for (int y = -1; y <= 1; y++)
+            {
+                for (int x = -1; x <= 1; x++)
+                {
+                    if (x != 0 || y != 0)
+                        graphics.DrawImageUnscaled(outline, x * outlineWidth, y * outlineWidth);
+                }
+            }
+
+            graphics.DrawImageUnscaled(foreground, 0, 0);
+            return overlay;
         }
 
         public static void DrawUnknown(TaskbarIcon taskbarIcon)
@@ -124,16 +151,23 @@ namespace LGSTrayUI
             using var wrapMode = new ImageAttributes();
             wrapMode.SetWrapMode(WrapMode.TileFlipXY);
 
-            Bitmap[] layers = [
-                GetBatteryValue(device),
-                Battery,
-                GetDeviceIcon(device),
+            (Bitmap? Image, bool TrimVerticalPadding)[] layers = [
+                (GetBatteryValue(device), true),
+                (Battery, true),
+                (GetDeviceIcon(device), false),
+                (device.PowerSupplyStatus == PowerSupplyStatus.POWER_SUPPLY_STATUS_CHARGING
+                    && device.BatteryPercentage >= 0 ? GetChargingOverlay() : null, true),
             ];
 
-            foreach (var image in layers)
+            foreach (var (image, trimVerticalPadding) in layers)
             {
-                // Trim unused vertical padding so the glyph fills the tray icon height.
-                var sourceRect = new RectangleF(0, image.Height * 0.08f, image.Width, image.Height * 0.84f);
+                if (image is null)
+                    continue;
+
+                // Enlarge the battery layers while keeping the device glyph at its original height.
+                var sourceRect = trimVerticalPadding
+                    ? new RectangleF(0, image.Height * 0.08f, image.Width, image.Height * 0.84f)
+                    : new RectangleF(0, 0, image.Width, image.Height);
                 g.DrawImage(image, destRect, sourceRect.X, sourceRect.Y, sourceRect.Width, sourceRect.Height,
                     GraphicsUnit.Pixel, wrapMode);
                 image.Dispose();
